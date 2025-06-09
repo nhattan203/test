@@ -9,50 +9,61 @@
     body {
       margin: 0; padding: 0;
       font-family: Arial, sans-serif;
-      background: #f8f8f8;
       min-height: 100vh;
       display: flex;
       justify-content: center;
       align-items: center;
+      background: linear-gradient(45deg, #1a1a3d, #4d4d7a, #8d99ae, #2a2a72);
+      background-size: 400% 400%;
+      animation: gradientBG 15s ease infinite;
+      overflow: hidden;
+    }
+    @keyframes gradientBG {
+      0% { background-position: 0% 50%; }
+      50% { background-position: 100% 50%; }
+      100% { background-position: 0% 50%; }
     }
     .container {
       width: 95%; max-width: 700px;
-      background: white;
-      border-radius: 12px;
+      background: rgba(255, 255, 255, 0.9);
+      border-radius: 15px;
       padding: 1.5em;
-      box-shadow: 0 0 12px rgba(0,0,0,0.1);
+      box-shadow: 0 8px 20px rgba(0, 0, 0, 0.2);
+      backdrop-filter: blur(5px);
+      position: relative;
+      z-index: 1;
     }
-    h2 { text-align: center; color: #333; }
+    h2 { text-align: center; color: #2a2a72; font-size: 1.5em; margin-bottom: 1em; }
+    .bg-animation {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      z-index: 0;
+      opacity: 0.3;
+      pointer-events: none;
+    }
+    .btn-group { display: flex; gap: 0.5em; }
     input, button {
       width: 100%; padding: 10px;
       margin: 0.5em 0; border: 1px solid #ccc;
       border-radius: 6px; font-size: 1em;
     }
-    .btn-group { display: flex; gap: 0.5em; }
     button {
-      background: #007BFF;
+      background: #2a2a72;
       color: white; cursor: pointer;
-      transition: background 0.3s;
+      transition: background 0.3s, transform 0.2s;
     }
-    button:hover { background: #0056b3; }
+    button:hover { background: #1a1a3d; transform: scale(1.05); }
     .clear-btn { background: #dc3545; }
     .clear-btn:hover { background: #c82333; }
     #output { margin-top: 1em; }
-    .safe { color: green; }
-    .warn { color: orange; }
-    .danger { color: red; font-weight: bold; }
-    .toggle-btn { 
-      color: #007BFF; cursor: pointer; 
-      margin-left: 5px; font-size: 0.9em;
-    }
+    .safe { color: #28a745; }
+    .warn { color: #ffc107; }
+    .danger { color: #dc3545; font-weight: bold; }
+    .toggle-btn { color: #2a2a72; cursor: pointer; margin-left: 5px; font-size: 0.9em; }
     .hidden-text { display: none; }
-    .utm-table {
-      margin-top: 1em; width: 100%;
-      border-collapse: collapse;
-    }
-    .utm-table td, .utm-table th {
-      border: 1px solid #ddd; padding: 6px;
-    }
+    .utm-table { margin-top: 1em; width: 100%; border-collapse: collapse; }
+    .utm-table td, .utm-table th { border: 1px solid #ddd; padding: 6px; }
     .utm-table th { background: #f0f0f0; }
     @media (max-width: 600px) {
       .container { padding: 1em; }
@@ -62,6 +73,7 @@
   </style>
 </head>
 <body>
+  <canvas class="bg-animation"></canvas>
   <div class="container">
     <h2>🔍 Soi Link Gốc</h2>
     <div class="btn-group">
@@ -73,6 +85,51 @@
   </div>
 
   <script>
+    // Background animation with particles
+    const canvas = document.querySelector('.bg-animation');
+    const ctx = canvas.getContext('2d');
+    canvas.width = window.innerWidth;
+    canvas.height = window.innerHeight;
+    const particles = [];
+    function Particle(x, y) {
+      this.x = x;
+      this.y = y;
+      this.size = Math.random() * 3 + 1;
+      this.speedX = Math.random() * 2 - 1;
+      this.speedY = Math.random() * 2 - 1;
+    }
+    Particle.prototype.update = function() {
+      this.x += this.speedX;
+      this.y += this.speedY;
+      if (this.x < 0 || this.x > canvas.width) this.speedX *= -1;
+      if (this.y < 0 || this.y > canvas.height) this.speedY *= -1;
+    };
+    Particle.prototype.draw = function() {
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.beginPath();
+      ctx.arc(this.x, this.y, this.size, 0, Math.PI * 2);
+      ctx.fill();
+    };
+    function init() {
+      for (let i = 0; i < 100; i++) {
+        particles.push(new Particle(Math.random() * canvas.width, Math.random() * canvas.height));
+      }
+    }
+    function animate() {
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      for (let i = 0; i < particles.length; i++) {
+        particles[i].update();
+        particles[i].draw();
+      }
+      requestAnimationFrame(animate);
+    }
+    init();
+    animate();
+    window.addEventListener('resize', () => {
+      canvas.width = window.innerWidth;
+      canvas.height = window.innerHeight;
+    });
+
     async function analyzeLink() {
       const input = document.getElementById('inputLink').value.trim();
       const output = document.getElementById('output');
@@ -89,32 +146,51 @@
       const domain = urlObj.hostname.replace('www.', '');
       const protocol = urlObj.protocol;
 
-      const safeResult = await checkSafeBrowsing(realLink);
+      const safetyReport = await checkSafety(realLink);
 
+      let utmSection = parseUTMParams(urlObj);
       let message = `
         <strong>✅ Link:</strong> <a href="${realLink}" target="_blank">${shortenText(realLink, 50)}</a>
         <span class="toggle-btn" onclick="toggleText(this, '${realLink}')">${realLink.length > 50 ? ' (Xem thêm)' : ''}</span><br>
         <strong>🌐 Domain:</strong> ${domain}<br>
         <strong>🔐 HTTPS:</strong> ${protocol === "https:" ? '<span class="safe">Có</span>' : '<span class="danger">Không!</span>'}<br>
-        <strong>🛡️ Safe Browsing:</strong> ${safeResult}<br>
-        <strong>⚠️ Rủi ro:</strong> ${checkDomainRisk(domain)}${parseUTMParams(urlObj)}
+        <strong>🛡️ Độ an toàn:</strong> ${safetyReport.overall}<br>
+        <strong>⚠️ Cảnh báo:</strong> ${safetyReport.warnings.join('<br>')}${utmSection}
       `;
       output.innerHTML = message;
     }
 
-    async function checkSafeBrowsing(url) {
+    async function checkSafety(url) {
       const API_KEY = "YOUR_API_KEY_HERE";
       const endpoint = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${API_KEY}`;
       const body = {
         client: { clientId: "soi-link", clientVersion: "1.0" },
-        threatInfo: { threatTypes: ["MALWARE", "SOCIAL_ENGINEERING"], platformTypes: ["ANY_PLATFORM"], threatEntryTypes: ["URL"], threatEntries: [{ url }] }
+        threatInfo: {
+          threatTypes: ["MALWARE", "SOCIAL_ENGINEERING", "PHISHING", "UNWANTED_SOFTWARE", "POTENTIALLY_HARMFUL_APPLICATION"],
+          platformTypes: ["ANY_PLATFORM"],
+          threatEntryTypes: ["URL"],
+          threatEntries: [{ url }]
+        }
       };
       try {
         const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
         const data = await res.json();
-        return data.matches ? '<span class="danger">Nguy hiểm!</span>' : '<span class="safe">An toàn</span>';
+        let warnings = [];
+        if (data.matches) {
+          data.matches.forEach(match => {
+            switch (match.threatType) {
+              case "MALWARE": warnings.push('<span class="danger">⚠ Malware phát hiện!</span>'); break;
+              case "PHISHING": warnings.push('<span class="danger">⚠ Lừa đảo (Phishing)!</span>'); break;
+              case "SOCIAL_ENGINEERING": warnings.push('<span class="warn">⚠ Kỹ thuật xã hội!</span>'); break;
+              case "UNWANTED_SOFTWARE": warnings.push('<span class="warn">⚠ Phần mềm không mong muốn!</span>'); break;
+              case "POTENTIALLY_HARMFUL_APPLICATION": warnings.push('<span class="warn">⚠ Ứng dụng có hại!</span>'); break;
+            }
+          });
+          return { overall: '<span class="danger">Nguy hiểm!</span>', warnings };
+        }
+        return { overall: '<span class="safe">An toàn</span>', warnings: [] };
       } catch {
-        return '<span class="warn">Kiểm tra thất bại</span>';
+        return { overall: '<span class="warn">Kiểm tra thất bại</span>', warnings: ['<span class="warn">Không thể xác minh an toàn.</span>'] };
       }
     }
 
@@ -127,176 +203,15 @@
     function parseUTMParams(urlObj) {
       const params = urlObj.searchParams;
       const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
-      let html = "<br><strong>📊 UTM:</strong><br><table class='utm-table'><tr><th>Tham số</th><th>Giá trị</th></tr>";
+      let html = "";
       let found = false;
       for (let key of utmKeys) if (params.has(key)) {
-        html += `<tr><td>${key}</td><td>${shortenText(params.get(key), 20)}</td></tr>`;
-        found = true;<!DOCTYPE html>
-<html lang="vi">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Soi Link Gốc - Phân Tích Nâng Cao</title>
-  <style>
-    * { box-sizing: border-box; }
-    body {
-      margin: 0; padding: 0;
-      font-family: Arial, sans-serif;
-      background: #f8f8f8;
-      min-height: 100vh;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-    }
-    .container {
-      width: 95%; max-width: 700px;
-      background: white;
-      border-radius: 12px;
-      padding: 1.5em;
-      box-shadow: 0 0 12px rgba(0,0,0,0.1);
-    }
-    h2 { text-align: center; color: #333; }
-    input, button {
-      width: 100%; padding: 10px;
-      margin: 0.5em 0; border: 1px solid #ccc;
-      border-radius: 6px; font-size: 1em;
-    }
-    .btn-group { display: flex; gap: 0.5em; }
-    button {
-      background: #007BFF;
-      color: white; cursor: pointer;
-      transition: background 0.3s;
-    }
-    button:hover { background: #0056b3; }
-    .clear-btn { background: #dc3545; }
-    .clear-btn:hover { background: #c82333; }
-    #output { margin-top: 1em; }
-    .safe { color: green; }
-    .warn { color: orange; }
-    .danger { color: red; font-weight: bold; }
-    .toggle-btn { 
-      color: #007BFF; cursor: pointer; 
-      margin-left: 5px; font-size: 0.9em;
-    }
-    .hidden-text { display: none; }
-    .utm-table {
-      margin-top: 1em; width: 100%;
-      border-collapse: collapse;
-    }
-    .utm-table td, .utm-table th {
-      border: 1px solid #ddd; padding: 6px;
-    }
-    .utm-table th { background: #f0f0f0; }
-    @media (max-width: 600px) {
-      .container { padding: 1em; }
-      .btn-group { flex-direction: column; }
-      .utm-table td, .utm-table th { padding: 4px; }
-    }
-  </style>
-</head>
-<body>
-  <div class="container">
-    <h2>🔍 Soi Link Gốc</h2>
-    <div class="btn-group">
-      <input id="inputLink" placeholder="Dán link quảng cáo/rút gọn...">
-      <button onclick="analyzeLink()">Phân tích</button>
-      <button class="clear-btn" onclick="clearLink()">Xóa</button>
-    </div>
-    <div id="output"></div>
-  </div>
-
-  <script>
-    async function analyzeLink() {
-      const input = document.getElementById('inputLink').value.trim();
-      const output = document.getElementById('output');
-      output.innerHTML = "Đang phân tích...";
-
-      const index = input.lastIndexOf("http");
-      let realLink = index !== -1 ? decodeURIComponent(input.slice(index)) : "";
-      if (!realLink || !realLink.startsWith("http")) {
-        output.innerHTML = '<div class="danger">❌ Link không hợp lệ!</div>';
-        return;
-      }
-
-      const urlObj = new URL(realLink);
-      const domain = urlObj.hostname.replace('www.', '');
-      const protocol = urlObj.protocol;
-
-      const safeResult = await checkSafeBrowsing(realLink);
-
-      let message = `
-        <strong>✅ Link:</strong> <a href="${realLink}" target="_blank">${shortenText(realLink, 50)}</a>
-        <span class="toggle-btn" onclick="toggleText(this, '${realLink}')">${realLink.length > 50 ? ' (Xem thêm)' : ''}</span><br>
-        <strong>🌐 Domain:</strong> ${domain}<br>
-        <strong>🔐 HTTPS:</strong> ${protocol === "https:" ? '<span class="safe">Có</span>' : '<span class="danger">Không!</span>'}<br>
-        <strong>🛡️ Safe Browsing:</strong> ${safeResult}<br>
-        <strong>⚠️ Rủi ro:</strong> ${checkDomainRisk(domain)}${parseUTMParams(urlObj)}
-      `;
-      output.innerHTML = message;
-    }
-
-    async function checkSafeBrowsing(url) {
-      const API_KEY = "YOUR_API_KEY_HERE";
-      const endpoint = `https://safebrowsing.googleapis.com/v4/threatMatches:find?key=${API_KEY}`;
-      const body = {
-        client: { clientId: "soi-link", clientVersion: "1.0" },
-        threatInfo: { threatTypes: ["MALWARE", "SOCIAL_ENGINEERING"], platformTypes: ["ANY_PLATFORM"], threatEntryTypes: ["URL"], threatEntries: [{ url }] }
-      };
-      try {
-        const res = await fetch(endpoint, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
-        const data = await res.json();
-        return data.matches ? '<span class="danger">Nguy hiểm!</span>' : '<span class="safe">An toàn</span>';
-      } catch {
-        return '<span class="warn">Kiểm tra thất bại</span>';
-      }
-    }
-
-    function checkDomainRisk(domain) {
-      const risky = { "bit.ly": "Rút gọn scam", "tinyurl.com": "Nguồn không rõ", "linktr.ee": "Nhiều link", "phishingsite.com": "Phishing", "scamlink.co": "Lừa đảo" };
-      const safe = ["shopee.vn", "lazada.vn", "tiki.vn", "facebook.com", "google.com"];
-      return safe.includes(domain) ? '<span class="safe">Tin cậy ✅</span>' : risky[domain] ? `<span class="danger">⚠️ ${risky[domain]}</span>` : '<span class="warn">Không rõ ❓</span>';
-    }
-
-    function parseUTMParams(urlObj) {
-      const params = urlObj.searchParams;
-      const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
-      let html = "<br><strong>📊 UTM:</strong><br><table class='utm-table'><tr><th>Tham số</th><th>Giá trị</th></tr>";
-      let found = false;
-      for (let key of utmKeys) if (params.has(key)) {
+        if (!found) html += "<br><strong>📊 UTM:</strong><br><table class='utm-table'><tr><th>Tham số</th><th>Giá trị</th></tr>";
         html += `<tr><td>${key}</td><td>${shortenText(params.get(key), 20)}</td></tr>`;
         found = true;
       }
-      html += "</table>";
-      return found ? html : "<br><em>Không có UTM.</em>";
-    }
-
-    function shortenText(text, maxLength) {
-      return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
-    }
-
-    function toggleText(btn, fullText) {
-      const next = btn.nextElementSibling;
-      if (next.classList.contains('hidden-text')) {
-        next.textContent = fullText;
-        next.classList.remove('hidden-text');
-        btn.textContent = ' (Ẩn)';
-      } else {
-        next.textContent = shortenText(fullText, 50);
-        next.classList.add('hidden-text');
-        btn.textContent = ' (Xem thêm)';
-      }
-    }
-
-    function clearLink() {
-      document.getElementById('inputLink').value = '';
-      document.getElementById('output').innerHTML = '';
-    }
-  </script>
-</body>
-</html>
-      }
-      html += "</table>";
-      return found ? html : "<br><em>Không có UTM.</em>";
+      html += found ? "</table>" : "<br><em>Không có UTM.</em>";
+      return html;
     }
 
     function shortenText(text, maxLength) {
