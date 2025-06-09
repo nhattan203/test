@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Soi Link Gốc - Phân Tích Nâng Cao</title>
+  <title>Link Origin Analyzer - Phân Tích Link Gốc</title>
   <style>
     * { box-sizing: border-box; }
     body {
@@ -52,16 +52,35 @@
       background: #2a2a72;
       color: white; cursor: pointer;
       transition: background 0.3s, transform 0.2s;
+      flex: 1;
     }
     button:hover { background: #1a1a3d; transform: scale(1.05); }
     .clear-btn { background: #dc3545; }
     .clear-btn:hover { background: #c82333; }
+    .show-btn, .hide-btn { background: #2a2a72; width: auto; padding: 5px 10px; }
+    .hide-btn { display: none; }
     #output { margin-top: 1em; }
     .safe { color: #28a745; }
     .warn { color: #ffc107; }
     .danger { color: #dc3545; font-weight: bold; }
-    .toggle-btn { color: #2a2a72; cursor: pointer; margin-left: 5px; font-size: 0.9em; }
-    .hidden-text { display: none; }
+    .link-container {
+      display: inline-block;
+      max-width: 100%;
+      vertical-align: middle;
+      overflow-x: auto;
+      white-space: nowrap;
+      border: 1px solid #ddd;
+      padding: 2px 5px;
+      border-radius: 4px;
+      background: #f9f9f9;
+    }
+    .hidden-text {
+      display: none;
+      max-width: 100%;
+    }
+    .hidden-text.active {
+      display: inline;
+    }
     .utm-table { margin-top: 1em; width: 100%; border-collapse: collapse; }
     .utm-table td, .utm-table th { border: 1px solid #ddd; padding: 6px; }
     .utm-table th { background: #f0f0f0; }
@@ -75,11 +94,11 @@
 <body>
   <canvas class="bg-animation"></canvas>
   <div class="container">
-    <h2>🔍 Soi Link Gốc</h2>
+    <h2>🔍 Link Origin Analyzer - Phân Tích Link Gốc</h2>
     <div class="btn-group">
-      <input id="inputLink" placeholder="Dán link quảng cáo/rút gọn...">
-      <button onclick="analyzeLink()">Phân tích</button>
-      <button class="clear-btn" onclick="clearLink()">Xóa</button>
+      <input id="inputLink" placeholder="Paste ad/shortened link... - Dán link quảng cáo/rút gọn...">
+      <button onclick="analyzeLink()">Analyze - Phân tích</button>
+      <button class="clear-btn" onclick="clearLink()">Clear - Xóa</button>
     </div>
     <div id="output"></div>
   </div>
@@ -133,29 +152,33 @@
     async function analyzeLink() {
       const input = document.getElementById('inputLink').value.trim();
       const output = document.getElementById('output');
-      output.innerHTML = "Đang phân tích...";
+      output.innerHTML = "Analyzing... - Đang phân tích...";
 
       const index = input.lastIndexOf("http");
       let realLink = index !== -1 ? decodeURIComponent(input.slice(index)) : "";
       if (!realLink || !realLink.startsWith("http")) {
-        output.innerHTML = '<div class="danger">❌ Link không hợp lệ!</div>';
+        output.innerHTML = '<div class="danger">Invalid link! - Link không hợp lệ!</div>';
         return;
       }
 
       const urlObj = new URL(realLink);
       const domain = urlObj.hostname.replace('www.', '');
       const protocol = urlObj.protocol;
+      const params = urlObj.searchParams;
 
       const safetyReport = await checkSafety(realLink);
 
+      // Thêm kiểm tra thủ công cho scam và quảng cáo
+      let manualWarnings = checkManualRisk(realLink, domain, params);
+
       let utmSection = parseUTMParams(urlObj);
       let message = `
-        <strong>✅ Link:</strong> <a href="${realLink}" target="_blank">${shortenText(realLink, 50)}</a>
-        <span class="toggle-btn" onclick="toggleText(this, '${realLink}')">${realLink.length > 50 ? ' (Xem thêm)' : ''}</span><br>
-        <strong>🌐 Domain:</strong> ${domain}<br>
-        <strong>🔐 HTTPS:</strong> ${protocol === "https:" ? '<span class="safe">Có</span>' : '<span class="danger">Không!</span>'}<br>
-        <strong>🛡️ Độ an toàn:</strong> ${safetyReport.overall}<br>
-        <strong>⚠️ Cảnh báo:</strong> ${safetyReport.warnings.join('<br>')}${utmSection}
+        <strong>Link: - Link:</strong> <span class="link-container"><span class="hidden-text">${shortenText(realLink, 50)}</span></span>
+        <button class="show-btn" onclick="showLink(this, '${realLink}')">Show - Hiện</button>
+        <button class="hide-btn" onclick="hideLink(this, '${realLink}')">Hide - Ẩn</button><br>
+        <strong>Domain: - Miền:</strong> ${domain}<br>
+        <strong>HTTPS: - Bảo mật:</strong> ${protocol === "https:" ? '<span class="safe">Yes - Có</span>' : '<span class="danger">No! - Không!</span>'}<br>
+        <strong>Warnings: - Cảnh báo:</strong> ${[...safetyReport.warnings, ...manualWarnings].join('<br>')}${utmSection}
       `;
       output.innerHTML = message;
     }
@@ -179,38 +202,60 @@
         if (data.matches) {
           data.matches.forEach(match => {
             switch (match.threatType) {
-              case "MALWARE": warnings.push('<span class="danger">⚠ Malware phát hiện!</span>'); break;
-              case "PHISHING": warnings.push('<span class="danger">⚠ Lừa đảo (Phishing)!</span>'); break;
-              case "SOCIAL_ENGINEERING": warnings.push('<span class="warn">⚠ Kỹ thuật xã hội!</span>'); break;
-              case "UNWANTED_SOFTWARE": warnings.push('<span class="warn">⚠ Phần mềm không mong muốn!</span>'); break;
-              case "POTENTIALLY_HARMFUL_APPLICATION": warnings.push('<span class="warn">⚠ Ứng dụng có hại!</span>'); break;
+              case "MALWARE": warnings.push('<span class="danger">⚠ Malware detected! - Malware phát hiện!</span>'); break;
+              case "PHISHING": warnings.push('<span class="danger">⚠ Phishing detected! - Lừa đảo (Phishing)!</span>'); break;
+              case "SOCIAL_ENGINEERING": warnings.push('<span class="warn">⚠ Social engineering! - Kỹ thuật xã hội!</span>'); break;
+              case "UNWANTED_SOFTWARE": warnings.push('<span class="warn">⚠ Unwanted software! - Phần mềm không mong muốn!</span>'); break;
+              case "POTENTIALLY_HARMFUL_APPLICATION": warnings.push('<span class="warn">⚠ Potentially harmful app! - Ứng dụng có hại!</span>'); break;
             }
           });
-          return { overall: '<span class="danger">Nguy hiểm!</span>', warnings };
+          return { overall: '<span class="danger">Dangerous! - Nguy hiểm!</span>', warnings };
         }
-        return { overall: '<span class="safe">An toàn</span>', warnings: [] };
+        return { overall: '<span class="safe">Safe - An toàn</span>', warnings: [] };
       } catch {
-        return { overall: '<span class="warn">Kiểm tra thất bại</span>', warnings: ['<span class="warn">Không thể xác minh an toàn.</span>'] };
+        return { overall: '<span class="warn">Check failed - Kiểm tra thất bại</span>', warnings: ['<span class="warn">Cannot verify safety. - Không thể xác minh an toàn.</span>'] };
       }
     }
 
-    function checkDomainRisk(domain) {
-      const risky = { "bit.ly": "Rút gọn scam", "tinyurl.com": "Nguồn không rõ", "linktr.ee": "Nhiều link", "phishingsite.com": "Phishing", "scamlink.co": "Lừa đảo" };
-      const safe = ["shopee.vn", "lazada.vn", "tiki.vn", "facebook.com", "google.com"];
-      return safe.includes(domain) ? '<span class="safe">Tin cậy ✅</span>' : risky[domain] ? `<span class="danger">⚠️ ${risky[domain]}</span>` : '<span class="warn">Không rõ ❓</span>';
+    function checkManualRisk(url, domain, params) {
+      let warnings = [];
+      // Kiểm tra domain nghi ngờ scam
+      const scamDomains = ["bit.ly", "tinyurl.com", "scamlink.co", "phishingsite.com"];
+      if (scamDomains.includes(domain)) {
+        warnings.push('<span class="danger">⚠ Possible scam/fraud! - Có dấu hiệu scam/lừa đảo!</span>');
+      }
+
+      // Kiểm tra quảng cáo (dựa trên UTM hoặc domain phổ biến quảng cáo)
+      const adDomains = ["ad.doubleclick.net", "googleadservices.com"];
+      if (adDomains.includes(domain) || params.has("utm_source") || params.has("utm_campaign")) {
+        warnings.push('<span class="danger">⚠ May contain ads! - Có thể chứa quảng cáo!</span>');
+      }
+
+      // Kiểm tra link rút gọn không rõ nguồn
+      if (url.includes("short") || url.includes("link/")) {
+        warnings.push('<span class="danger">⚠ Shortened link, be cautious! - Link rút gọn, cần cẩn thận!</span>');
+      }
+
+      return warnings.length > 0 ? warnings : ['<span class="safe">No manual risks detected. - Không phát hiện rủi ro thủ công.</span>'];
     }
 
     function parseUTMParams(urlObj) {
       const params = urlObj.searchParams;
-      const utmKeys = ["utm_source", "utm_medium", "utm_campaign", "utm_content", "utm_term"];
+      const utmKeys = [
+        { key: "utm_source", vi: "Nguồn" },
+        { key: "utm_medium", vi: "Kênh" },
+        { key: "utm_campaign", vi: "Chiến dịch" },
+        { key: "utm_content", vi: "Nội dung" },
+        { key: "utm_term", vi: "Từ khóa" }
+      ];
       let html = "";
       let found = false;
-      for (let key of utmKeys) if (params.has(key)) {
-        if (!found) html += "<br><strong>📊 UTM:</strong><br><table class='utm-table'><tr><th>Tham số</th><th>Giá trị</th></tr>";
-        html += `<tr><td>${key}</td><td>${shortenText(params.get(key), 20)}</td></tr>`;
+      for (let item of utmKeys) if (params.has(item.key)) {
+        if (!found) html += "<br><strong>UTM: - UTM:</strong><br><table class='utm-table'><tr><th>Parameter - Tham số</th><th>Value - Giá trị</th></tr>";
+        html += `<tr><td>${item.key} (${item.vi})</td><td>${shortenText(params.get(item.key), 20)}</td></tr>`;
         found = true;
       }
-      html += found ? "</table>" : "<br><em>Không có UTM.</em>";
+      html += found ? "</table>" : "<br><em>No UTM found. - Không có UTM.</em>";
       return html;
     }
 
@@ -218,17 +263,22 @@
       return text.length > maxLength ? text.slice(0, maxLength) + "..." : text;
     }
 
-    function toggleText(btn, fullText) {
-      const next = btn.nextElementSibling;
-      if (next.classList.contains('hidden-text')) {
-        next.textContent = fullText;
-        next.classList.remove('hidden-text');
-        btn.textContent = ' (Ẩn)';
-      } else {
-        next.textContent = shortenText(fullText, 50);
-        next.classList.add('hidden-text');
-        btn.textContent = ' (Xem thêm)';
-      }
+    function showLink(btn, fullText) {
+      const linkSpan = btn.previousElementSibling.querySelector('.hidden-text');
+      linkSpan.textContent = fullText;
+      linkSpan.classList.remove('hidden-text');
+      linkSpan.classList.add('active');
+      btn.style.display = 'none';
+      btn.nextElementSibling.style.display = 'inline-block';
+    }
+
+    function hideLink(btn, fullText) {
+      const linkSpan = btn.previousElementSibling.querySelector('.hidden-text');
+      linkSpan.textContent = shortenText(fullText, 50);
+      linkSpan.classList.remove('active');
+      linkSpan.classList.add('hidden-text');
+      btn.style.display = 'none';
+      btn.previousElementSibling.style.display = 'inline-block';
     }
 
     function clearLink() {
